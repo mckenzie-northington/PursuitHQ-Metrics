@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PursuitHQ.Metrics</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Npgsql only. This project deliberately does NOT reference PursuitHQ.API.
+
+      Every query here is hand-written aggregate SQL, so what it can see is
+      auditable by reading this project alone. Borrowing the API's DbContext
+      would bring every entity - and every navigation property leading to a
+      student's messages and coursework - within reach of a careless line.
+    -->
+    <PackageReference Include="Npgsql" Version="10.*" />
+  </ItemGroup>
+
+</Project>

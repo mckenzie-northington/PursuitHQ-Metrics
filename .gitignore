@@ -1,0 +1,24 @@
+# Build output
+bin/
+obj/
+
+# The generated report. It contains real numbers about real people's use of the
+# app - aggregate, but still not something to publish to a repository.
+metrics.html
+
+# Anything holding a connection string. The one this tool needs lives in the
+# PURSUITHQ_METRICS_DB environment variable and must never be committed.
+*.env
+.env*
+appsettings.*.json
+secrets.json
+
+# Editors
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
