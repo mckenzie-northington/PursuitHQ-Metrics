@@ -27,7 +27,7 @@ namespace PursuitHQ.Metrics
 
             // ---------- headline numbers ----------
             html.Append("<section><div class=\"tiles\">");
-            html.Append(Tile("Accounts", s.Accounts.ToString("N0")));
+            html.Append(Tile("Total active accounts", s.Accounts.ToString("N0")));
             html.Append(Tile("New today", s.SignupsToday.ToString("N0")));
             html.Append(Tile("New this week", s.Signups7.ToString("N0")));
             html.Append(Tile("New in 30 days", s.Signups30.ToString("N0")));
