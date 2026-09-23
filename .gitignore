@@ -6,6 +6,10 @@ obj/
 # app - aggregate, but still not something to publish to a repository.
 metrics.html
 
+# The saved history of past runs. Real numbers about real people's use of the
+# app, accumulated over time - aggregate, and still not for a public repository.
+history.jsonl
+
 # Anything holding a connection string. The one this tool needs lives in the
 # PURSUITHQ_METRICS_DB environment variable and must never be committed.
 *.env

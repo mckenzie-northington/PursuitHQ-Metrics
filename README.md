@@ -43,6 +43,8 @@ privacy policy has to change with it.
 | Median time to first course | How long before somebody does the thing the product is for |
 | Feature use, 30 days | Distinct people per feature — read it for what to *stop* maintaining |
 | Made this week | Courses, assignments, messages, materials and the rest |
+| Accounts lost | Deletions all-time and this month, churn rate, median account lifetime |
+| Over time | Saved history - accounts, deletions and activation across the days you ran it |
 | Needs attention | Open reports, reports this week, total stored bytes |
 
 The activation funnel is the one to watch. The drop between two rows is where
@@ -88,20 +90,24 @@ and nowhere else.
 
 ## Running
 
+Double-click **`View metrics.cmd`**. It builds, reads the database, and opens
+the report in your browser. The window closes on its own; it stays open only
+when something failed, so the error is readable.
+
+Or from a terminal:
+
 ```
 cd PursuitHQ.Metrics
 dotnet run
 ```
 
-It prints where it wrote the report and opens it.
+Both do the same thing. The first run takes a few seconds longer while NuGet
+restores Npgsql.
 
 ## Not yet measurable
 
-Three metrics need the application to record something it currently does not:
+Two metrics need the application to record something it currently does not:
 
-- **Deletions and churn.** When an account is deleted the row is gone, so there
-  is nothing left to count. Needs a small append-only event log holding a date
-  and no personal data.
 - **Daily and weekly active users, and retention cohorts.** There is no
   `LastSeenAt` on the user. One nullable column, touched on authenticated
   requests.
@@ -110,6 +116,28 @@ Three metrics need the application to record something it currently does not:
   and the leaky daily cap at the same time.
 
 Worth adding once it is clear which numbers get looked at.
+
+## How history works
+
+Two different mechanisms, because the questions are different.
+
+**Deletions come from the application.** An `AccountEvents` table records a
+tally mark - a kind and a date, with no user id, no email and no foreign key -
+each time an account is created or destroyed. Nothing else would work: once a
+row is deleted there is nothing left to count, and a record that outlives a
+deleted account has to say nothing about them or the deletion was not real.
+Deletion events also carry the account's age in days, which shows whether people
+leave in week one or after a term.
+
+**Everything else is saved locally.** Each run appends one line to
+`history.jsonl` beside the report, holding that day's headline numbers. This is
+for the questions the database cannot answer retroactively: what fraction of
+people had added a course as of last Tuesday is a question about a moment that
+has passed, and nothing stores it.
+
+History therefore starts the first time you run the tool and covers the days you
+ran it, not every day. That is the honest trade for a tool holding no write
+permission on the database. `history.jsonl` is gitignored.
 
 ## Built with
 

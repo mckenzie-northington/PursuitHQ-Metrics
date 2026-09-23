@@ -52,8 +52,11 @@ namespace PursuitHQ.Metrics
                 return 1;
             }
 
+            // Written before rendering, so today's point appears on today's chart.
+            var history = History.Append(snapshot);
+
             var path = Path.Combine(AppContext.BaseDirectory, "metrics.html");
-            await File.WriteAllTextAsync(path, Report.Render(snapshot));
+            await File.WriteAllTextAsync(path, Report.Render(snapshot, history));
 
             Console.WriteLine($"Wrote {path}");
             Open(path);
@@ -163,6 +166,45 @@ namespace PursuitHQ.Metrics
                 new("Study chats", await CountAsync(db, Created7(@"""StudyConversations""", @"""CreatedAt""")))
             };
 
+            // ---------- deletions ----------
+            //
+            // Guarded: the table arrives with a migration, and running this
+            // against a database that has not had it yet should show zeroes
+            // rather than fall over. to_regclass returns null for a table that
+            // does not exist, which is cheaper than catching an exception.
+            var hasEvents = await CountAsync(db,
+                @"SELECT CASE WHEN to_regclass('public.""AccountEvents""') IS NULL
+                              THEN 0 ELSE 1 END") == 1;
+
+            long deletedTotal = 0, deleted30 = 0;
+            double? medianLifetimeDays = null;
+            var deletionsByDay = new List<DayCount>();
+
+            if (hasEvents)
+            {
+                deletedTotal = await CountAsync(db,
+                    @"SELECT count(*) FROM ""AccountEvents"" WHERE ""Kind"" = 1");
+
+                deleted30 = await CountAsync(db,
+                    @"SELECT count(*) FROM ""AccountEvents""
+                      WHERE ""Kind"" = 1 AND ""OccurredAt"" >= now() - interval '30 days'");
+
+                medianLifetimeDays = await MaybeDoubleAsync(db,
+                    @"SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY ""AccountAgeDays"")
+                      FROM ""AccountEvents""
+                      WHERE ""Kind"" = 1 AND ""AccountAgeDays"" IS NOT NULL");
+
+                deletionsByDay = await SeriesAsync(db, @"
+                    SELECT d::date, count(e.""Id"")
+                    FROM generate_series(
+                            current_date - interval '29 days', current_date, interval '1 day') d
+                    LEFT JOIN ""AccountEvents"" e
+                           ON e.""Kind"" = 1
+                          AND e.""OccurredAt"" >= d AND e.""OccurredAt"" < d + interval '1 day'
+                    GROUP BY d
+                    ORDER BY d");
+            }
+
             // ---------- safety and capacity ----------
             var openReports = await CountAsync(db,
                 @"SELECT count(*) FROM ""Reports"" WHERE ""Status"" = 0");
@@ -194,7 +236,12 @@ namespace PursuitHQ.Metrics
                 Created7Days: created,
                 OpenReports: openReports,
                 Reports7Days: reports7,
-                StorageBytes: storageBytes);
+                StorageBytes: storageBytes,
+                TracksDeletions: hasEvents,
+                DeletedTotal: deletedTotal,
+                Deleted30Days: deleted30,
+                DeletionsByDay: deletionsByDay,
+                MedianAccountLifetimeDays: medianLifetimeDays);
         }
 
         private static string Distinct30(string table, string userColumn, string dateColumn) =>
@@ -268,5 +315,10 @@ namespace PursuitHQ.Metrics
         List<Bar> Created7Days,
         long OpenReports,
         long Reports7Days,
-        long StorageBytes);
+        long StorageBytes,
+        bool TracksDeletions,
+        long DeletedTotal,
+        long Deleted30Days,
+        List<DayCount> DeletionsByDay,
+        double? MedianAccountLifetimeDays);
 }

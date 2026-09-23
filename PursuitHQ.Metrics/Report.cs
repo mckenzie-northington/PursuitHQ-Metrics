@@ -12,7 +12,7 @@ namespace PursuitHQ.Metrics
     /// </summary>
     public static class Report
     {
-        public static string Render(Snapshot s)
+        public static string Render(Snapshot s, List<History.Point> history)
         {
             var html = new StringBuilder();
 
@@ -67,6 +67,51 @@ namespace PursuitHQ.Metrics
             // ---------- things made ----------
             html.Append("<section><h2>Made this week</h2>");
             html.Append(Bars(s.Created7Days, "created"));
+            html.Append("</section>");
+
+            // ---------- churn ----------
+            html.Append("<section><h2>Accounts lost</h2>");
+
+            if (!s.TracksDeletions)
+            {
+                html.Append("<p class=\"note\">Not being recorded yet. Deleting an account removes ");
+                html.Append("its row, so unless the app writes down that it happened there is nothing ");
+                html.Append("left to count. Add the <code>AccountEvents</code> migration and this ");
+                html.Append("fills in from that day forward.</p>");
+            }
+            else
+            {
+                var net = s.Accounts;
+                html.Append("<div class=\"tiles\">");
+                html.Append(Tile("Deleted, all time", s.DeletedTotal.ToString("N0")));
+                html.Append(Tile("Deleted in 30 days", s.Deleted30Days.ToString("N0")));
+                html.Append(Tile("Net accounts", net.ToString("N0")));
+                html.Append(Tile("Churn, 30 days",
+                    s.Accounts + s.Deleted30Days == 0
+                        ? "-"
+                        : (s.Deleted30Days * 100.0 / (s.Accounts + s.Deleted30Days)).ToString("0.#") + "%"));
+                html.Append("</div>");
+
+                if (s.DeletionsByDay.Any(d => d.Count > 0))
+                {
+                    html.Append("<h3>Deletions, last 30 days</h3>");
+                    html.Append(TimeSeries(s.DeletionsByDay));
+                }
+
+                if (s.MedianAccountLifetimeDays is double life)
+                {
+                    html.Append("<p class=\"note\">Median account lifetime before deletion: <strong>")
+                        .Append(Encode(life < 1 ? "under a day" : $"{life:0.#} days"))
+                        .Append("</strong>. People leaving in the first week is an onboarding problem; ")
+                        .Append("people leaving after a term is a different one.</p>");
+                }
+            }
+
+            html.Append("</section>");
+
+            // ---------- trend ----------
+            html.Append("<section><h2>Over time</h2>");
+            html.Append(Trend(history));
             html.Append("</section>");
 
             // ---------- attention ----------
@@ -198,6 +243,68 @@ namespace PursuitHQ.Metrics
             return html.Append("</div>").ToString();
         }
 
+        /// <summary>
+        /// The saved history - one point per day this tool was run.
+        ///
+        /// Gaps are real and are shown as gaps rather than smoothed over: the
+        /// history only has the days somebody opened the report, and pretending
+        /// otherwise would invent data.
+        /// </summary>
+        private static string Trend(List<History.Point> history)
+        {
+            if (history.Count < 2)
+            {
+                return "<p class=\"note\">Nothing to chart yet - this needs at least two days of "
+                     + "history, and it saves one point each day you open it. Come back tomorrow.</p>";
+            }
+
+            var html = new StringBuilder();
+            html.Append("<p class=\"note\">Saved each time the report is opened, on the machine that ")
+                .Append("opened it. It covers the days you looked, not every day.</p>");
+
+            html.Append(TrendChart("Accounts", history, p => p.Accounts));
+            html.Append(TrendChart("Deleted, all time", history, p => p.DeletedTotal));
+            html.Append(TrendChart("People with a course", history, p => p.WithCourse));
+
+            html.Append("<details><summary>Show the numbers</summary><table>");
+            html.Append("<thead><tr><th>Date</th><th>Accounts</th><th>Deleted</th>")
+                .Append("<th>With a course</th></tr></thead><tbody>");
+
+            foreach (var point in history)
+            {
+                html.Append("<tr><td>").Append(Encode(point.Date)).Append("</td><td>")
+                    .Append(point.Accounts).Append("</td><td>")
+                    .Append(point.DeletedTotal).Append("</td><td>")
+                    .Append(point.WithCourse).Append("</td></tr>");
+            }
+
+            return html.Append("</tbody></table></details>").ToString();
+        }
+
+        private static string TrendChart(
+            string title, List<History.Point> history, Func<History.Point, long> pick)
+        {
+            var peak = Math.Max(1, history.Max(pick));
+            var html = new StringBuilder();
+
+            html.Append("<h3>").Append(Encode(title)).Append("</h3><div class=\"series\">");
+
+            foreach (var point in history)
+            {
+                var value = pick(point);
+                var height = value == 0 ? 0 : Math.Max(3, (int)(value * 100 / peak));
+
+                html.Append("<div class=\"col\" title=\"")
+                    .Append(Encode($"{point.Date}: {value}")).Append("\">")
+                    .Append("<div class=\"col-fill\" style=\"height:").Append(height).Append("%\"></div>")
+                    .Append("</div>");
+            }
+
+            return html.Append("</div><div class=\"series-axis\"><span>")
+                .Append(Encode(history[0].Date)).Append("</span><span>")
+                .Append(Encode(history[^1].Date)).Append("</span></div>").ToString();
+        }
+
         // ------------------------------------------------------------ helpers
 
         private static string Duration(double hours) =>
@@ -266,6 +373,9 @@ section {
   border-radius: 12px; padding: 20px; margin-top: 16px;
 }
 h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+h3 { margin: 22px 0 8px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+       background: var(--line); padding: 1px 5px; border-radius: 4px; }
 .note { margin: 0 0 16px; color: var(--ink-2); font-size: 13px; max-width: 60ch; }
 /* A note that follows a chart is a caption, not an intro - it needs air above. */
 .funnel + .note { margin: 16px 0 0; }
